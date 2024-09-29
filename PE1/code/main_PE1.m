@@ -16,6 +16,7 @@ clear all;
 close all;
 % fix random number generator
 rng(2);
+setup;
 
 %% get parameters and define system and controller
 params = get_params('params_PE1'); % TODO: Specify parameters in separate file

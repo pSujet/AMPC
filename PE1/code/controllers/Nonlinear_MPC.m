@@ -69,6 +69,9 @@ classdef Nonlinear_MPC < Controller
                 obj.objective = obj.objective + obj.x(:,i)'*obj.params.Q*obj.x(:,i) + obj.u(:,i)'*obj.params.R*obj.u(:,i);
             end
             
+            % minimize objective 
+            obj.prob.minimize(obj.objective)
+            
             % define constraints
             obj.prob.subject_to(obj.x(:,1) == obj.x_0); % initial condition
             for i = 1:obj.params.N

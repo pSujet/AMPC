@@ -79,7 +79,7 @@ classdef RMPC < Controller
             nx = size(A_x,1);                     % number of states constraints
             nu = size(A_u,1);          
             
-            % Define objective            
+            % Define objective      
             objective = 0;
             for i = 1:N
                 objective = objective + z(:,i)'*obj.params.Q*z(:,i) + v(:,i)'*obj.params.R*v(:,i);
@@ -151,7 +151,7 @@ classdef RMPC < Controller
             Y = sdpvar(1,n);                    % Y = KE
             c_xj_squre = sdpvar(nx,1);          % 
             c_uj_squre = sdpvar(nu,1);          % 
-            w_bar_square = sdpvar(1,1);           % squre(max(sqrt(w'*inv(E)*w)))
+            w_bar_square = sdpvar(1,1);         % squre(max(sqrt(w'*inv(E)*w)))
             
             % Define objective
             objectives = (nx + nu)*w_bar_square;
@@ -176,7 +176,7 @@ classdef RMPC < Controller
             end
             for i = 1:size(W.V,1)
                 % v_w = W.V(1,:)
-                constraints = [constraints, [w_bar_square, W.V(1,:); W.V(1,:)', E] >= 0];
+                constraints = [constraints, [w_bar_square, W.V(i,:); W.V(i,:)', E] >= 0];
             end
             
             
@@ -189,6 +189,7 @@ classdef RMPC < Controller
             optimize(constraints,objectives);
             
             % get data back
+            disp(value(E))
             w_bar = sqrt(value(w_bar_square));
             x_tight = sqrt(value(c_xj_squre))*w_bar*(1/(1-rho));
             u_tight = sqrt(value(c_uj_squre))*w_bar*(1/(1-rho));

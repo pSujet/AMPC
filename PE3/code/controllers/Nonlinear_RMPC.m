@@ -80,7 +80,12 @@ classdef Nonlinear_RMPC < Controller
             if ~isempty(w_bar)
                 %%% TODO %%%
                 % compute L_w and recompute delta according to manually set
+                G = params.G;
+                L_w = max(svd(P^(1/2)*G*P^(-1/2)));
+
                 % w_bar in this if clause.
+                delta = w_bar/(1-rho);
+                w_hat = w_bar;
             end
                         
             % --- initialize Opti stack ---
@@ -102,7 +107,29 @@ classdef Nonlinear_RMPC < Controller
             % end
             
             % --- start inserting here --- 
+            % define objective
+            objective = 0;
+            for i = 1:obj.params.N
+                objective = objective + obj.x(:,i)'*obj.params.Q*obj.x(:,i) + obj.u(:,i)'*obj.params.R*obj.u(:,i);
+            end
             
+            % minimize objective 
+            obj.prob.minimize(objective)
+            
+            % define constraints
+            for i = 1:obj.params.N
+                obj.prob.subject_to(obj.x(:,i+1) == sys.f(obj.x(:,i),obj.u(:,i)))
+                obj.prob.subject_to(sys.X.A*obj.x(:,i) <= sys.X.b - c_x * delta)
+                obj.prob.subject_to(sys.U.A*obj.u(:,i) <= sys.U.b - c_u * delta)            
+            end
+            obj.prob.subject_to(obj.x(:,obj.params.N+1)== [0;0])
+            obj.prob.subject_to((obj.x_0 - obj.x(:,1))'*P*(obj.x_0 - obj.x(:,1)) <= delta^2)
+            
+            if ~isempty(w_bar)
+                for i = 1:obj.params.N
+                    obj.prob.subject_to((G*obj.x(:,i))'*P*(G*obj.x(:,i)) <=(w_hat - L_w * delta)^2)                    
+                end                
+            end
             
             % --- stop inserting here ---
             %%%
@@ -150,34 +177,67 @@ classdef Nonlinear_RMPC < Controller
             % use the following definition as the vertices of the
             % disturbance set.
             W_V = obj.params.G*obj.sys.X.V';
+            A_x = obj.sys.X.A;
+            A_u = obj.sys.U.A;
+            nx = size(A_x,1);                     % number of states constraints
+            nu = size(A_u,1);                     % number of input constraints
+            n = obj.sys.n;                        % number of states
             
-            constraints = ;
-            objective = ;
-            
+            % Define decision variable
+            E = sdpvar(n,n);
+            Y = sdpvar(1,n);                    % Y = KE
+            c_xj_squre = sdpvar(nx,1);          % 
+            c_uj_squre = sdpvar(nu,1);          % 
+            w_bar_square = sdpvar(1,1);         %
+       
+            % Define objective
+            objective = (sum(c_xj_squre) + sum(c_uj_squre) + (nx + nu)*w_bar_square)/(2*(1-rho));
+%             objective = 0;
+%             for i = 1:nx
+%                 objective = objective + sqrt(c_xj_squre(i,1))*sqrt(w_bar_square)/(1-rho);
+%             end
+%             for i = 1:nu
+%                 objective = objective + sqrt(c_uj_squre(i,1))*sqrt(w_bar_square)/(1-rho);
+%             end
+            % Define constraints
+            constraints = [E >= eye(n)];
+            constraints = [constraints, [rho^2*E, (A_1*E + B*Y)';A_1*E + B*Y, E]>=0];
+            constraints = [constraints, [rho^2*E, (A_2*E + B*Y)';A_2*E + B*Y, E]>=0];
+            for i = 1:nx
+                constraints = [constraints, [c_xj_squre(i,1), A_x(i,:)*E; E'*A_x(i,:)',E] >= 0];
+            end
+            for i = 1:nu
+                constraints = [constraints, [c_uj_squre(i,1), A_u(i,:)*Y; Y'*A_u(i,:)',E] >= 0];
+            end
+            for i = 1:size(W_V,2)
+                % v_w = W.V(1,:)
+                constraints = [constraints, [w_bar_square, W_V(:,i)'; W_V(:,i), E] >= 0];
+            end
+                        
             % solve problem
-            options = sdpsettings('solver','sedumi', 'verbose', 0);
+%             options = sdpsettings('solver','sedumi', 'verbose', 0);
             % only uncomment if you have Mosek installed
-            %options = sdpsettings('solver','mosek', 'verbose', 0);
+            options = sdpsettings('solver','mosek', 'verbose', 0);
             
             % --- define optimizer object ---
-            optimize(constraints, objective, options);
-            
+            optimize(constraints, objective, options);            
             
             % --- define function outputs ---
             % recover Lyapunov function & controller
-            P = ;
-            K = ;
-            
+            P = inv(value(E));
+            K = value(Y)/value(E);
+%             disp(value(E))
+
             %--- compute tightening ---
             % compute w_bar & delta
-            w_bar = ;
-            delta = ;
+            w_bar = sqrt(value(w_bar_square));
+            delta = w_bar/(1-rho);
             
             % compute tightening of state constraints
-            c_x = ;
+            c_x = sqrt(value(c_xj_squre));
             
             % compute tightening of input constraints
-            c_u = ;
+            c_u = sqrt(value(c_uj_squre));
             
             % --- stop inserting here --- 
         end
